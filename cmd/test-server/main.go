@@ -23,8 +23,33 @@ func main() {
 	// 동적 조합 생성기 초기화
 	dynamicGenerator = NewDynamicCombinationGenerator()
 
-	// Gin 라우터 생성
-	router := gin.Default()
+    // Gin 라우터 생성
+    router := gin.New()
+    router.Use(gin.Recovery())
+    // CORS (개발 기본: 3000 허용)
+    router.Use(func(c *gin.Context) {
+        origin := c.GetHeader("Origin")
+        if origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000" {
+            c.Header("Access-Control-Allow-Origin", origin)
+            c.Header("Vary", "Origin")
+            c.Header("Access-Control-Allow-Credentials", "true")
+        } else {
+            c.Header("Access-Control-Allow-Origin", "*")
+        }
+        c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        if reqH := c.GetHeader("Access-Control-Request-Headers"); reqH != "" {
+            c.Header("Access-Control-Allow-Headers", reqH)
+        } else {
+            c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Request-ID")
+        }
+        c.Header("Access-Control-Expose-Headers", "X-Request-ID, X-Process-Time")
+        c.Header("Access-Control-Max-Age", "86400")
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+        c.Next()
+    })
 
 	// 로깅 미들웨어
 	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
