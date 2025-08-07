@@ -11,6 +11,9 @@ import (
 	"github.com/Todari/chuingho-server/pkg/model"
 )
 
+// 간단한 인메모리 스토리지 (실제로는 데이터베이스 사용)
+var resumeStorage = make(map[string]string)
+
 func main() {
 	// 로거 초기화
 	logger, _ := zap.NewDevelopment()
@@ -68,13 +71,18 @@ func main() {
 
 		// Mock 응답 생성
 		resumeID := uuid.New()
+		
+		// 텍스트를 스토리지에 저장 (실제로는 데이터베이스에 저장)
+		resumeStorage[resumeID.String()] = req.Text
+		
 		response := model.UploadResumeResponse{
 			ResumeID: resumeID,
 			Status:   model.ResumeStatusUploaded,
 		}
 
 		logger.Info("자기소개서 업로드 성공",
-			zap.String("resume_id", resumeID.String()))
+			zap.String("resume_id", resumeID.String()),
+			zap.Int("text_length", len([]rune(req.Text))))
 
 		c.JSON(http.StatusOK, response)
 	})
@@ -94,12 +102,17 @@ func main() {
 		logger.Info("췽호 생성 요청",
 			zap.String("resume_id", req.ResumeID.String()))
 
-		// Mock 췽호 추천 (실제로는 ML 서비스와 벡터 검색 사용)
-		mockTitles := []string{
-			"창의적 설계자",
-			"열정적 개발자", 
-			"협력적 리더",
+		// 향상된 칭호 생성 (실제로는 ML 서비스와 벡터 검색 사용)
+		// resumeId로 원본 텍스트를 찾아서 스마트한 칭호 생성
+		var resumeText string
+		if storedText, exists := resumeStorage[req.ResumeID.String()]; exists {
+			resumeText = storedText
+		} else {
+			resumeText = "창의적이고 열정적인 개발자입니다. 팀워크를 중시하며 지속적인 학습과 성장을 추구합니다."
 		}
+		
+		titleGenerator := NewTitleGenerator()
+		mockTitles := titleGenerator.GenerateSmartTitles(resumeText, 3)
 
 		response := model.GenerateTitlesResponse{
 			Titles: mockTitles,

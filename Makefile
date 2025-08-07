@@ -1,6 +1,6 @@
 # 췽호 프로젝트 Makefile
 
-.PHONY: help build test clean up down restart logs migration prepare-phrases
+.PHONY: help build test clean up down restart logs migration prepare-phrases deploy-local deploy-docker rollback-deploy deploy-status
 
 # 기본 타겟
 help:
@@ -17,6 +17,10 @@ help:
 	@echo "  migration       - 데이터베이스 마이그레이션 실행"
 	@echo "  prepare-phrases - 구문 후보 사전 구축"
 	@echo "  test-api        - API 테스트 실행"
+	@echo "  deploy-local    - 로컬 환경 배포 테스트"
+	@echo "  deploy-docker   - Docker 환경 배포 테스트"
+	@echo "  rollback-deploy - 배포 롤백 (이전 버전으로 복구)"
+	@echo "  deploy-status   - 현재 배포 상태 확인"
 
 # 바이너리 빌드
 build:
@@ -134,6 +138,55 @@ lint:
 	@echo "린팅 중..."
 	golangci-lint run
 	@echo "린팅 완료!"
+
+# 배포 관련 타겟
+deploy-local:
+	@echo "🚀 로컬 배포 테스트 시작..."
+	./scripts/simple-deploy.sh
+
+deploy-docker:
+	@echo "🐳 Docker 배포 테스트 시작..."
+	./scripts/docker-deploy.sh
+
+rollback-deploy:
+	@echo "🔄 배포 롤백 중..."
+	@echo "현재 실행 중인 서비스 확인:"
+	@ps aux | grep -E "(test-server|server)" | grep -v grep || echo "실행 중인 서버 없음"
+	@echo ""
+	@echo "Docker 컨테이너 중지:"
+	@docker-compose down 2>/dev/null || echo "Docker 컨테이너 없음"
+	@echo ""
+	@echo "기본 테스트 서버 재시작:"
+	@if ! curl -s -f http://localhost:8080/health > /dev/null; then \
+		echo "테스트 서버 시작 중..."; \
+		./bin/test-server & \
+		sleep 3; \
+		if curl -s -f http://localhost:8080/health > /dev/null; then \
+			echo "✅ 롤백 완료 - 테스트 서버 정상 동작"; \
+		else \
+			echo "❌ 롤백 실패 - 수동으로 서버를 시작해주세요"; \
+		fi \
+	else \
+		echo "✅ 서비스가 이미 정상 동작 중입니다"; \
+	fi
+
+# 배포 상태 확인
+deploy-status:
+	@echo "📊 현재 배포 상태:"
+	@echo ""
+	@echo "로컬 서비스 (포트 8080):"
+	@if curl -s -f http://localhost:8080/health > /dev/null; then \
+		echo "  상태: ✅ 정상"; \
+		curl -s http://localhost:8080/health | jq -r '"  버전: " + .service'; \
+	else \
+		echo "  상태: ❌ 중단"; \
+	fi
+	@echo ""
+	@echo "Docker 컨테이너:"
+	@docker-compose ps 2>/dev/null || echo "  Docker 환경 없음"
+	@echo ""
+	@echo "프로세스 목록:"
+	@ps aux | grep -E "(test-server|server)" | grep -v grep || echo "  실행 중인 서버 없음"
 
 # 전체 검사
 check: fmt lint test
