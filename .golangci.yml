@@ -1,0 +1,71 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+    - path: cmd/
+      linters:
+        - gocyclo
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gci
+    - gofmt
+    - goimports
+    - gosec
+    - misspell
+    - revive
+    - unparam
+    - unconvert
+    - prealloc
+    - exportloopref
+    - noctx
+  disable:
+    - varnamelen  # 변수명 길이 체크 비활성화 (한글 주석으로 충분)
+    - gomnd       # 매직 넘버 체크 비활성화 (설정값들이 많음)
+    - lll         # 라인 길이 체크 비활성화
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  gosec:
+    excludes:
+      - G404  # 랜덤 시드 사용
+  
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/Todari/chuingho-server)
+  
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # 한글 주석 사용을 위해 비활성화
+      - name: package-comments
+        disabled: true
+  
+  staticcheck:
+    checks: ["all"]
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true

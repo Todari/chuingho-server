@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: postgres:15-alpine
+    container_name: chuingho-postgres
+    environment:
+      POSTGRES_USER: chuingho
+      POSTGRES_PASSWORD: chuingho_password
+      POSTGRES_DB: chuingho
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - chuingho-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chuingho -d chuingho"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO 객체 스토리지
+  minio:
+    image: minio/minio:latest
+    container_name: chuingho-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"    # API 포트
+      - "9001:9001"    # 웹 콘솔 포트
+    networks:
+      - chuingho-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ML 임베딩 서비스
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: chuingho-ml
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8001
+      EMBEDDING_MODEL: BM-K/KoSimCSE-bert
+      ENABLE_ONNX: false
+    ports:
+      - "8001:8001"
+    networks:
+      - chuingho-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # 데이터베이스 마이그레이션 (init 컨테이너)
+  migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chuingho-migration
+    environment:
+      CHUINGHO_DATABASE_HOST: postgres
+      CHUINGHO_DATABASE_PORT: 5432
+      CHUINGHO_DATABASE_USERNAME: chuingho
+      CHUINGHO_DATABASE_PASSWORD: chuingho_password
+      CHUINGHO_DATABASE_DBNAME: chuingho
+      CHUINGHO_DATABASE_SSLMODE: disable
+    command: ["migration", "-direction", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chuingho-network
+    restart: "no"
+
+  # 메인 API 서버
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chuingho-server
+    environment:
+      # 서버 설정
+      CHUINGHO_SERVER_HOST: 0.0.0.0
+      CHUINGHO_SERVER_PORT: 8080
+      CHUINGHO_SERVER_ENVIRONMENT: production
+      
+      # 데이터베이스 설정
+      CHUINGHO_DATABASE_HOST: postgres
+      CHUINGHO_DATABASE_PORT: 5432
+      CHUINGHO_DATABASE_USERNAME: chuingho
+      CHUINGHO_DATABASE_PASSWORD: chuingho_password
+      CHUINGHO_DATABASE_DBNAME: chuingho
+      CHUINGHO_DATABASE_SSLMODE: disable
+      
+      # 스토리지 설정
+      CHUINGHO_STORAGE_ENDPOINT: minio:9000
+      CHUINGHO_STORAGE_ACCESS_KEY_ID: minioadmin
+      CHUINGHO_STORAGE_SECRET_ACCESS_KEY: minioadmin123
+      CHUINGHO_STORAGE_BUCKET_NAME: chuingho-resumes
+      CHUINGHO_STORAGE_USE_SSL: false
+      
+      # ML 서비스 설정
+      CHUINGHO_ML_SERVICE_URL: http://ml-service:8001
+      CHUINGHO_ML_TIMEOUT: 30
+      CHUINGHO_ML_RETRY_COUNT: 3
+      
+      # 벡터 DB 설정
+      CHUINGHO_VECTOR_TYPE: faiss
+      CHUINGHO_VECTOR_INDEX_PATH: /app/faiss_index
+      CHUINGHO_VECTOR_DIMENSION: 768
+      
+      # 로그 설정
+      CHUINGHO_LOG_LEVEL: info
+      CHUINGHO_LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+    volumes:
+      - faiss_data:/app/faiss_index
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - chuingho-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 구문 후보 사전 구축 (선택적 실행)
+  phrase-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chuingho-phrase-builder
+    environment:
+      CHUINGHO_DATABASE_HOST: postgres
+      CHUINGHO_DATABASE_PORT: 5432
+      CHUINGHO_DATABASE_USERNAME: chuingho
+      CHUINGHO_DATABASE_PASSWORD: chuingho_password
+      CHUINGHO_DATABASE_DBNAME: chuingho
+      CHUINGHO_DATABASE_SSLMODE: disable
+      CHUINGHO_ML_SERVICE_URL: http://ml-service:8001
+      CHUINGHO_VECTOR_TYPE: faiss
+      CHUINGHO_VECTOR_INDEX_PATH: /app/faiss_index
+    volumes:
+      - faiss_data:/app/faiss_index
+    command: ["prepare_phrases", "-input", "phrases_corpus.txt", "-batch", "20", "-max", "100"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    networks:
+      - chuingho-network
+    restart: "no"
+    profiles:
+      - tools  # docker-compose --profile tools up 으로 실행
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local  
+  faiss_data:
+    driver: local
+
+networks:
+  chuingho-network:
+    driver: bridge

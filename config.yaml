@@ -1,0 +1,47 @@
+# 췽호 서버 설정 파일
+
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 10
+  write_timeout: 10
+  idle_timeout: 60
+  environment: "dev"  # dev, staging, prod
+
+database:
+  host: "localhost"
+  port: 5432
+  username: "chuingho"
+  password: "chuingho_password"
+  dbname: "chuingho"
+  sslmode: "disable"
+  max_conns: 25
+  min_conns: 5
+
+storage:
+  endpoint: "localhost:9000"
+  access_key_id: "minioadmin"
+  secret_access_key: "minioadmin123"
+  bucket_name: "chuingho-resumes"
+  region: "us-east-1"
+  use_ssl: false
+  presigned_expiry: 3600  # seconds
+
+ml:
+  service_url: "http://localhost:8001"
+  timeout: 30  # seconds
+  retry_count: 3
+  embedding_model: "BM-K/KoSimCSE-bert"
+
+vector:
+  type: "faiss"  # faiss, chroma
+  host: "localhost"  # chroma용
+  port: 8000         # chroma용
+  index_path: "./faiss_index"  # faiss용
+  dimension: 768
+  metric_type: "IP"  # IP (Inner Product), L2
+
+log:
+  level: "info"  # debug, info, warn, error, fatal
+  format: "console"  # console, json
+  output_path: "stdout"  # stdout, 파일 경로

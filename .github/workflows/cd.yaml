@@ -1,0 +1,249 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository }}/api-server
+  IMAGE_NAME_ML: ${{ github.repository }}/ml-service
+
+jobs:
+  # 버전 태깅
+  version:
+    name: Generate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate version
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          IS_RELEASE=true
+        else
+          VERSION=main-${GITHUB_SHA::8}
+          IS_RELEASE=false
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+        echo "Generated version: $VERSION"
+
+  # Docker 이미지 빌드 및 푸시
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service:
+          - name: api-server
+            context: .
+            dockerfile: ./Dockerfile
+            image_name: ${{ needs.version.outputs.version }}
+          - name: ml-service
+            context: ./ml-service
+            dockerfile: ./ml-service/Dockerfile
+            image_name: ${{ needs.version.outputs.version }}
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service.name }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=sha,prefix=main-,suffix=-{{date 'YYYYMMDD'}},format=short
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.service.context }}
+        file: ${{ matrix.service.dockerfile }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+  # 개발 환경 배포 (main 브랜치)
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [version, build-and-push]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: development
+      url: https://dev-api.chuingho.com
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to development
+      run: |
+        echo "Deploying version ${{ needs.version.outputs.version }} to development"
+        # 실제 배포 스크립트 여기에 추가
+        # 예: kubectl, helm, docker-compose 등 사용
+        
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests on development environment"
+        # 개발 환경 스모크 테스트
+        timeout 300 bash -c 'until curl -f https://dev-api.chuingho.com/health; do sleep 10; done'
+
+  # 프로덕션 환경 배포 (릴리즈 태그)
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [version, build-and-push]
+    if: needs.version.outputs.is_release == 'true'
+    environment:
+      name: production
+      url: https://api.chuingho.com
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "Deploying version ${{ needs.version.outputs.version }} to production"
+        # 실제 프로덕션 배포 스크립트
+        
+    - name: Run production smoke tests
+      run: |
+        echo "Running smoke tests on production environment"
+        timeout 300 bash -c 'until curl -f https://api.chuingho.com/health; do sleep 10; done'
+
+    - name: Notify deployment success
+      uses: 8398a7/action-slack@v3
+      if: success()
+      with:
+        status: success
+        channel: '#deployments'
+        text: |
+          🚀 Production deployment successful!
+          Version: ${{ needs.version.outputs.version }}
+          Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Notify deployment failure
+      uses: 8398a7/action-slack@v3
+      if: failure()
+      with:
+        status: failure
+        channel: '#deployments'
+        text: |
+          ❌ Production deployment failed!
+          Version: ${{ needs.version.outputs.version }}
+          Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 릴리즈 노트 생성
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version, deploy-prod]
+    if: needs.version.outputs.is_release == 'true'
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # 이전 태그부터 현재까지의 변경사항 추출
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -n "$PREVIOUS_TAG" ]; then
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
+        else
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
+        fi
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ needs.version.outputs.version }}
+        release_name: Release ${{ needs.version.outputs.version }}
+        body: |
+          ## Changes in ${{ needs.version.outputs.version }}
+          
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Docker Images
+          - API Server: `ghcr.io/${{ github.repository }}/api-server:${{ needs.version.outputs.version }}`
+          - ML Service: `ghcr.io/${{ github.repository }}/ml-service:${{ needs.version.outputs.version }}`
+          
+          ## Deployment
+          - Production: https://api.chuingho.com
+          - Documentation: https://docs.chuingho.com
+        draft: false
+        prerelease: false
+
+  # 문서 배포
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: [version]
+    if: github.ref == 'refs/heads/main' || needs.version.outputs.is_release == 'true'
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js for docs
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Generate API docs
+      run: |
+        echo "Generating OpenAPI documentation"
+        # swag init 등으로 API 문서 생성
+        
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
+        cname: docs.chuingho.com

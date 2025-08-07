@@ -1,0 +1,56 @@
+# 바이너리 파일
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+chuingho-server
+server
+migration
+prepare_phrases
+
+# 테스트 결과
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# 의존성 폴더
+vendor/
+
+# Go workspace 파일
+go.work
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 환경설정 파일
+.env
+.env.local
+config.local.yaml
+
+# 로그 파일
+*.log
+logs/
+
+# 벡터 DB 데이터
+faiss_index/
+chroma_db/
+
+# 임시 파일
+tmp/
+temp/
+
+# MacOS
+.DS_Store
+
+# Docker 볼륨
+.docker/
+
+# 개인 테스트 파일
+sample_*.txt
+test_*.txt

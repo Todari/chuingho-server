@@ -1,0 +1,279 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.22'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Go 코드 검증
+  go-tests:
+    name: Go Tests and Linting
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Install golangci-lint
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+
+    - name: Run golangci-lint
+      run: golangci-lint run
+
+    - name: Run tests
+      run: |
+        go test -v -race -coverprofile=coverage.out ./...
+      env:
+        CHUINGHO_DATABASE_HOST: localhost
+        CHUINGHO_DATABASE_PORT: 5432
+        CHUINGHO_DATABASE_USERNAME: test_user
+        CHUINGHO_DATABASE_PASSWORD: test_password
+        CHUINGHO_DATABASE_DBNAME: test_db
+        CHUINGHO_DATABASE_SSLMODE: disable
+
+    - name: Generate coverage report
+      run: go tool cover -html=coverage.out -o coverage.html
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.out
+        flags: go
+        name: go-coverage
+
+    - name: Check coverage threshold
+      run: |
+        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "Coverage: $COVERAGE%"
+        if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+          echo "Coverage $COVERAGE% is below threshold 80%"
+          exit 1
+        fi
+
+  # Python ML 서비스 검증
+  python-tests:
+    name: Python ML Service Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        cd ml-service
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Python linting
+      run: |
+        cd ml-service
+        pip install flake8 black isort
+        # Black formatting check
+        black --check .
+        # Import sorting check  
+        isort --check-only .
+        # Linting
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run Python tests
+      run: |
+        cd ml-service
+        python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+
+    - name: Upload Python coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./ml-service/coverage.xml
+        flags: python
+        name: python-coverage
+
+  # 보안 스캔
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Docker 이미지 빌드 테스트
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: [go-tests, python-tests]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Go API Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: chuingho-server:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build ML Service Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./ml-service
+        file: ./ml-service/Dockerfile
+        push: false
+        tags: chuingho-ml:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # 통합 테스트
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Start services with Docker Compose
+      run: |
+        docker-compose up -d --build
+        # 서비스 시작 대기
+        sleep 60
+
+    - name: Wait for services to be ready
+      run: |
+        timeout 300 bash -c 'until curl -f http://localhost:8080/health; do sleep 5; done'
+        timeout 300 bash -c 'until curl -f http://localhost:8001/health; do sleep 5; done'
+
+    - name: Run API integration tests
+      run: |
+        # 헬스체크
+        curl -f http://localhost:8080/health
+        curl -f http://localhost:8001/health
+        
+        # 자기소개서 업로드 테스트
+        RESUME_RESPONSE=$(curl -s -F "file=@sample_resume.txt" http://localhost:8080/v1/resumes)
+        echo "Upload response: $RESUME_RESPONSE"
+        
+        # resumeId 추출
+        RESUME_ID=$(echo $RESUME_RESPONSE | jq -r '.resumeId')
+        echo "Resume ID: $RESUME_ID"
+        
+        if [ "$RESUME_ID" = "null" ] || [ -z "$RESUME_ID" ]; then
+          echo "Failed to get resumeId"
+          exit 1
+        fi
+
+    - name: Check service logs
+      if: failure()
+      run: |
+        echo "=== API Server Logs ==="
+        docker-compose logs api-server
+        echo "=== ML Service Logs ==="
+        docker-compose logs ml-service
+        echo "=== Database Logs ==="
+        docker-compose logs postgres
+
+    - name: Stop services
+      if: always()
+      run: docker-compose down -v
+
+  # 코드 품질 분석
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: SonarCloud Scan
+      uses: SonarSource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          -Dsonar.projectKey=chuingho-server
+          -Dsonar.organization=todari
+          -Dsonar.sources=.
+          -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/testdata/**
+          -Dsonar.coverage.exclusions=**/*_test.go
+          -Dsonar.go.coverage.reportPaths=coverage.out

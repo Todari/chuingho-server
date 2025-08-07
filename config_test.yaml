@@ -1,0 +1,45 @@
+# 테스트용 간단한 설정 파일
+
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 10
+  write_timeout: 10
+  idle_timeout: 60
+  environment: "dev"
+
+database:
+  host: "localhost"
+  port: 5432
+  username: "test"
+  password: "test"
+  dbname: "test"
+  sslmode: "disable"
+  max_conns: 5
+  min_conns: 1
+
+storage:
+  endpoint: "localhost:9000"
+  access_key_id: "test"
+  secret_access_key: "test"
+  bucket_name: "test-bucket"
+  region: "us-east-1"
+  use_ssl: false
+  presigned_expiry: 3600
+
+ml:
+  service_url: "http://localhost:8001"
+  timeout: 30
+  retry_count: 3
+  embedding_model: "BM-K/KoSimCSE-bert"
+
+vector:
+  type: "faiss"
+  index_path: "./test_faiss_index"
+  dimension: 768
+  metric_type: "IP"
+
+log:
+  level: "info"
+  format: "console"
+  output_path: "stdout"
