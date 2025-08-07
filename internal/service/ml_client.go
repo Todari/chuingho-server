@@ -85,6 +85,33 @@ func (c *MLClient) GetBatchEmbeddings(ctx context.Context, phrases []string) (ma
 	return result, nil
 }
 
+// GenerateDynamicCombinations 동적 형용사+명사 조합 생성
+func (c *MLClient) GenerateDynamicCombinations(ctx context.Context, resumeText string, topK int) (*model.DynamicCombinationResponse, error) {
+	requestBody := model.DynamicCombinationRequest{
+		ResumeText:        resumeText,
+		TopK:              topK,
+		AdjFilterCount:    20, // 상위 형용사 20개
+		NounFilterCount:   30, // 상위 명사 30개
+	}
+
+	response, err := c.makeRequest(ctx, "/generate_dynamic_combinations", requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("동적 조합 생성 요청 실패: %w", err)
+	}
+
+	var combinationResponse model.DynamicCombinationResponse
+	if err := json.Unmarshal(response, &combinationResponse); err != nil {
+		return nil, fmt.Errorf("동적 조합 응답 파싱 실패: %w", err)
+	}
+
+	c.logger.Info("동적 조합 생성 완료",
+		zap.Int("combinations_count", len(combinationResponse.Combinations)),
+		zap.Int("total_generated", combinationResponse.TotalGenerated),
+		zap.Float64("processing_time", combinationResponse.ProcessingTime))
+
+	return &combinationResponse, nil
+}
+
 // HealthCheck ML 서비스 상태 확인
 func (c *MLClient) HealthCheck(ctx context.Context) error {
 	url := c.config.ServiceURL + "/health"

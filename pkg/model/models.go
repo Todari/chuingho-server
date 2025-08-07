@@ -122,6 +122,28 @@ type VectorSearchResult struct {
 	Score  float32 `json:"score"`
 }
 
+// 동적 조합 생성 요청/응답 모델
+type DynamicCombinationRequest struct {
+	ResumeText       string `json:"resume_text" binding:"required"`
+	TopK             int    `json:"top_k"`
+	AdjFilterCount   int    `json:"adj_filter_count"`
+	NounFilterCount  int    `json:"noun_filter_count"`
+}
+
+type CombinationDetail struct {
+	Phrase     string  `json:"phrase"`
+	Similarity float64 `json:"similarity"`
+}
+
+type DynamicCombinationResponse struct {
+	Combinations        []string            `json:"combinations"`
+	Details             []CombinationDetail `json:"details"`
+	ProcessingTime      float64             `json:"processing_time"`
+	TotalGenerated      int                 `json:"total_generated"`
+	FilteredAdjectives  int                 `json:"filtered_adjectives"`
+	FilteredNouns       int                 `json:"filtered_nouns"`
+}
+
 // ErrorResponse API 에러 응답
 type ErrorResponse struct {
 	Error   string `json:"error"`

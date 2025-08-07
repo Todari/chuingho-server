@@ -68,31 +68,32 @@ func (s *TitleService) GenerateTitles(ctx context.Context, resumeID uuid.UUID) (
 		return nil, fmt.Errorf("자기소개서 내용이 너무 짧습니다 (최소 50자 필요)")
 	}
 
-	// ML 서비스로 임베딩 생성
-	embedding, err := s.mlClient.GetEmbedding(ctx, content)
+	// 🚀 새로운 동적 조합 생성 방식
+	// ML 서비스의 동적 조합 생성 API 호출
+	dynamicResponse, err := s.mlClient.GenerateDynamicCombinations(ctx, content, 3)
 	if err != nil {
-		s.resumeService.UpdateResumeStatus(ctx, resumeID, model.ResumeStatusFailed)
-		return nil, fmt.Errorf("임베딩 생성 실패: %w", err)
+		s.logger.Error("동적 조합 생성 실패, 기본 방식으로 대체", zap.Error(err))
+		// 실패시 기본 방식으로 폴백
+		return s.generateTitlesLegacy(ctx, resumeID, content)
 	}
 
-	// 벡터 검색으로 유사한 췽호 후보 찾기
-	searchResults, err := s.vectorDB.Search(ctx, embedding, 50) // top-50 후보
-	if err != nil {
-		s.resumeService.UpdateResumeStatus(ctx, resumeID, model.ResumeStatusFailed)
-		return nil, fmt.Errorf("벡터 검색 실패: %w", err)
+	if len(dynamicResponse.Combinations) == 0 {
+		s.logger.Warn("동적 조합 생성 결과 없음, 기본 방식으로 대체")
+		return s.generateTitlesLegacy(ctx, resumeID, content)
 	}
 
-	if len(searchResults) == 0 {
-		s.resumeService.UpdateResumeStatus(ctx, resumeID, model.ResumeStatusFailed)
-		return nil, fmt.Errorf("적합한 췽호 후보를 찾을 수 없습니다")
-	}
+	finalTitles := dynamicResponse.Combinations
+	
+	s.logger.Info("동적 조합 생성 성공",
+		zap.Strings("combinations", finalTitles),
+		zap.Int("total_generated", dynamicResponse.TotalGenerated),
+		zap.Int("filtered_adjectives", dynamicResponse.FilteredAdjectives),
+		zap.Int("filtered_nouns", dynamicResponse.FilteredNouns),
+		zap.Float64("processing_time", dynamicResponse.ProcessingTime))
 
-	// 다양성 기반 재순위화 후 상위 3개 선택
-	finalTitles := s.diversityRanking(searchResults, 3)
-
-	// 결과 저장
+	// 결과 저장 (동적 조합 방식에서는 searchResults가 없으므로 빈 슬라이스 전달)
 	processingTime := int(time.Since(startTime).Milliseconds())
-	if err := s.saveTitleRecommendation(ctx, resumeID, finalTitles, searchResults, processingTime); err != nil {
+	if err := s.saveDynamicTitleRecommendation(ctx, resumeID, finalTitles, dynamicResponse, processingTime); err != nil {
 		s.logger.Error("췽호 추천 결과 저장 실패", zap.Error(err))
 	}
 
@@ -306,4 +307,73 @@ func (s *TitleService) GetRandomTitles(ctx context.Context) []string {
 
 	s.logger.Info("기본 췽호 반환", zap.Strings("titles", selected))
 	return selected
+}
+
+// generateTitlesLegacy 기존 방식의 췽호 생성 (폴백용)
+func (s *TitleService) generateTitlesLegacy(ctx context.Context, resumeID uuid.UUID, content string) (*model.GenerateTitlesResponse, error) {
+	s.logger.Info("기존 방식으로 췽호 생성 시작", zap.String("resume_id", resumeID.String()))
+	
+	// ML 서비스로 임베딩 생성
+	embedding, err := s.mlClient.GetEmbedding(ctx, content)
+	if err != nil {
+		s.resumeService.UpdateResumeStatus(ctx, resumeID, model.ResumeStatusFailed)
+		return nil, fmt.Errorf("임베딩 생성 실패: %w", err)
+	}
+
+	// 벡터 검색으로 유사한 췽호 후보 찾기
+	searchResults, err := s.vectorDB.Search(ctx, embedding, 50) // top-50 후보
+	if err != nil {
+		s.resumeService.UpdateResumeStatus(ctx, resumeID, model.ResumeStatusFailed)
+		return nil, fmt.Errorf("벡터 검색 실패: %w", err)
+	}
+
+	var finalTitles []string
+	if len(searchResults) == 0 {
+		s.logger.Warn("벡터 DB에서 결과 없음, 기본 췽호 사용")
+		finalTitles = s.GetRandomTitles(ctx)
+	} else {
+		// 다양성 기반 재순위화 후 상위 3개 선택
+		finalTitles = s.diversityRanking(searchResults, 3)
+	}
+
+	return &model.GenerateTitlesResponse{
+		Titles: finalTitles,
+	}, nil
+}
+
+// saveDynamicTitleRecommendation 동적 조합 생성 결과 저장
+func (s *TitleService) saveDynamicTitleRecommendation(
+	ctx context.Context,
+	resumeID uuid.UUID,
+	titles []string,
+	dynamicResponse *model.DynamicCombinationResponse,
+	processingTime int,
+) error {
+	// 동적 조합의 상세 정보를 점수 맵으로 변환
+	scores := make(map[string]float32)
+	for _, detail := range dynamicResponse.Details {
+		scores[detail.Phrase] = float32(detail.Similarity)
+	}
+
+	// 메타데이터 추가
+	metadata := map[string]interface{}{
+		"method":               "dynamic_combination",
+		"total_generated":      dynamicResponse.TotalGenerated,
+		"filtered_adjectives":  dynamicResponse.FilteredAdjectives,
+		"filtered_nouns":       dynamicResponse.FilteredNouns,
+		"ml_processing_time":   dynamicResponse.ProcessingTime,
+	}
+
+	_, err := s.db.Pool.Exec(ctx, `
+		INSERT INTO title_recommendations (
+			resume_id, titles, vector_similarity_scores, 
+			processing_time_ms, ml_model_version, metadata, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+		resumeID, titles, scores, processingTime, "KoSimCSE-bert-v1-dynamic", metadata)
+
+	if err != nil {
+		return fmt.Errorf("동적 조합 결과 저장 실패: %w", err)
+	}
+
+	return nil
 }

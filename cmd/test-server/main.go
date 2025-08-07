@@ -13,11 +13,15 @@ import (
 
 // 간단한 인메모리 스토리지 (실제로는 데이터베이스 사용)
 var resumeStorage = make(map[string]string)
+var dynamicGenerator *DynamicCombinationGenerator
 
 func main() {
 	// 로거 초기화
 	logger, _ := zap.NewDevelopment()
 	defer logger.Sync()
+
+	// 동적 조합 생성기 초기화
+	dynamicGenerator = NewDynamicCombinationGenerator()
 
 	// Gin 라우터 생성
 	router := gin.Default()
@@ -102,8 +106,8 @@ func main() {
 		logger.Info("췽호 생성 요청",
 			zap.String("resume_id", req.ResumeID.String()))
 
-		// 향상된 칭호 생성 (실제로는 ML 서비스와 벡터 검색 사용)
-		// resumeId로 원본 텍스트를 찾아서 스마트한 칭호 생성
+		// 🚀 동적 조합 생성 방식 사용
+		// resumeId로 원본 텍스트를 찾아서 동적 조합 생성
 		var resumeText string
 		if storedText, exists := resumeStorage[req.ResumeID.String()]; exists {
 			resumeText = storedText
@@ -111,8 +115,16 @@ func main() {
 			resumeText = "창의적이고 열정적인 개발자입니다. 팀워크를 중시하며 지속적인 학습과 성장을 추구합니다."
 		}
 		
-		titleGenerator := NewTitleGenerator()
-		mockTitles := titleGenerator.GenerateSmartTitles(resumeText, 3)
+		// 새로운 동적 조합 생성 사용
+		dynamicResult := dynamicGenerator.GenerateDynamicCombinations(resumeText, 3)
+		mockTitles := dynamicResult["combinations"].([]string)
+		
+		// 결과가 없으면 기존 방식으로 폴백
+		if len(mockTitles) == 0 {
+			logger.Warn("동적 조합 생성 결과 없음, 기존 방식으로 폴백")
+			titleGenerator := NewTitleGenerator()
+			mockTitles = titleGenerator.GenerateSmartTitles(resumeText, 3)
+		}
 
 		response := model.GenerateTitlesResponse{
 			Titles: mockTitles,
@@ -123,6 +135,54 @@ func main() {
 			zap.Strings("titles", mockTitles))
 
 		c.JSON(http.StatusOK, response)
+	})
+
+	// 🚀 새로운 동적 조합 생성 API (ML 서비스 시뮬레이션)
+	router.POST("/generate_dynamic_combinations", func(c *gin.Context) {
+		var req map[string]interface{}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "올바른 JSON 형식이 필요합니다",
+			})
+			return
+		}
+
+		resumeText, ok := req["resume_text"].(string)
+		if !ok || resumeText == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "resume_text가 필요합니다",
+			})
+			return
+		}
+
+		topK := 3
+		if topKValue, ok := req["top_k"].(float64); ok {
+			topK = int(topKValue)
+		}
+
+		logger.Info("동적 조합 생성 요청",
+			zap.Int("resume_length", len(resumeText)),
+			zap.Int("top_k", topK))
+
+		// 동적 조합 생성
+		result := dynamicGenerator.GenerateDynamicCombinations(resumeText, topK)
+
+		logger.Info("동적 조합 생성 완료",
+			zap.Int("combinations_count", len(result["combinations"].([]string))),
+			zap.Int("total_generated", result["total_generated"].(int)),
+			zap.Float64("processing_time", result["processing_time"].(float64)))
+
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ML 서비스 헬스체크 시뮬레이션 (별도 엔드포인트)
+	router.GET("/ml-health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "healthy",
+			"timestamp": time.Now(),
+			"service":   "chuingho-ml-service-mock",
+			"model":     "KoSimCSE-bert-v1-dynamic",
+		})
 	})
 
 	// 서버 시작
