@@ -133,8 +133,16 @@ func (dcg *DynamicCombinationGenerator) GenerateDynamicCombinations(resumeText s
 	// 5단계: 유사도 기준 정렬
 	dcg.sortBySimilarity(similarities)
 	
-	// 6단계: 다양성 고려 선택 (MMR 알고리즘)
-	finalResults := dcg.selectDiverseCombinations(similarities, topK)
+    // 6단계: 다양성 고려 선택 (MMR 알고리즘)
+    finalResults := dcg.selectDiverseCombinations(similarities, topK)
+
+    // 상위 유사 조합 5개 추출
+    topSimilar := []map[string]interface{}{}
+    maxTop := 5
+    if len(similarities) < maxTop { maxTop = len(similarities) }
+    for i := 0; i < maxTop; i++ {
+        topSimilar = append(topSimilar, similarities[i])
+    }
 	
 	processingTime := time.Since(startTime).Seconds()
 	
@@ -144,13 +152,14 @@ func (dcg *DynamicCombinationGenerator) GenerateDynamicCombinations(resumeText s
 		finalCombinations = append(finalCombinations, result["phrase"].(string))
 	}
 	
-	return map[string]interface{}{
+    return map[string]interface{}{
 		"combinations":        finalCombinations,
 		"details":             finalResults,
 		"processing_time":     processingTime,
 		"total_generated":     len(combinations),
 		"filtered_adjectives": len(relevantAdjectives),
-		"filtered_nouns":      len(relevantNouns),
+        "filtered_nouns":      len(relevantNouns),
+        "top_similar":         topSimilar,
 	}
 }
 
@@ -313,10 +322,13 @@ func (dcg *DynamicCombinationGenerator) calculateSemanticRelevance(word, keyword
 			"혁신적인": 0.8, "창의적인": 0.7, "전문적인": 0.9, "체계적인": 0.6,
 			"개발자": 0.9, "엔지니어": 0.9, "전문가": 0.7, "설계자": 0.8,
 		},
-		"창의": {
-			"독창적인": 0.9, "혁신적인": 0.8, "상상력있는": 0.8, "예술적인": 0.7,
-			"기획자": 0.8, "설계자": 0.7, "창작자": 0.9, "혁신가": 0.9,
-		},
+        "창의": {
+            "독창적인": 0.9, "혁신적인": 0.8, "상상력있는": 0.8, "예술적인": 0.7,
+            "창의적인": 0.9,
+            "기획자": 0.8, "설계자": 0.7, "창작자": 0.9, "혁신가": 0.9,
+            // 약한 연상: 자연어적 시적 조합 허용을 위한 소량 가중치
+            "바람": 0.3,
+        },
 		"리더십": {
 			"주도적인": 0.9, "카리스마있는": 0.8, "책임감있는": 0.7, "결단력있는": 0.8,
 			"리더": 0.9, "지도자": 0.9, "관리자": 0.7, "지휘자": 0.8,

@@ -115,20 +115,38 @@ func main() {
 			resumeText = "창의적이고 열정적인 개발자입니다. 팀워크를 중시하며 지속적인 학습과 성장을 추구합니다."
 		}
 		
-		// 새로운 동적 조합 생성 사용
-		dynamicResult := dynamicGenerator.GenerateDynamicCombinations(resumeText, 3)
-		mockTitles := dynamicResult["combinations"].([]string)
-		
-		// 결과가 없으면 기존 방식으로 폴백
-		if len(mockTitles) == 0 {
-			logger.Warn("동적 조합 생성 결과 없음, 기존 방식으로 폴백")
-			titleGenerator := NewTitleGenerator()
-			mockTitles = titleGenerator.GenerateSmartTitles(resumeText, 3)
-		}
+        // 새로운 동적 조합 생성 사용
+        dynamicResult := dynamicGenerator.GenerateDynamicCombinations(resumeText, 3)
+        mockTitles := dynamicResult["combinations"].([]string)
 
-		response := model.GenerateTitlesResponse{
-			Titles: mockTitles,
-		}
+        // 결과가 없으면 안전한 기본 세트로 폴백 (레거시 코드 제거)
+        if len(mockTitles) == 0 {
+            logger.Warn("동적 조합 생성 결과 없음, 기본 타이틀로 폴백")
+            mockTitles = []string{"창의적인 개발자", "세심한 분석가", "협력적인 리더"}
+        }
+
+        // 상위 유사 5개를 details에서 추출
+        var topSimilar []model.CombinationDetail
+        if rawTop, ok := dynamicResult["top_similar"].([]map[string]interface{}); ok {
+            for _, item := range rawTop {
+                phrase, _ := item["phrase"].(string)
+                sim, _ := item["similarity"].(float64)
+                topSimilar = append(topSimilar, model.CombinationDetail{Phrase: phrase, Similarity: sim})
+            }
+        } else if rawAny, ok := dynamicResult["top_similar"].([]interface{}); ok {
+            for _, v := range rawAny {
+                if m, ok := v.(map[string]interface{}); ok {
+                    phrase, _ := m["phrase"].(string)
+                    sim, _ := m["similarity"].(float64)
+                    topSimilar = append(topSimilar, model.CombinationDetail{Phrase: phrase, Similarity: sim})
+                }
+            }
+        }
+
+        response := model.GenerateTitlesResponse{
+            Titles:     mockTitles,
+            TopSimilar: topSimilar,
+        }
 
 		logger.Info("췽호 생성 완료",
 			zap.String("resume_id", req.ResumeID.String()),

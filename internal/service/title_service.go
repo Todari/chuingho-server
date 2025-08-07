@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -82,7 +83,19 @@ func (s *TitleService) GenerateTitles(ctx context.Context, resumeID uuid.UUID) (
 		return s.generateTitlesLegacy(ctx, resumeID, content)
 	}
 
-	finalTitles := dynamicResponse.Combinations
+    finalTitles := dynamicResponse.Combinations
+    // 상위 유사 5개 계산 (응답에 없으면 Details에서 유도)
+    topSimilar := dynamicResponse.TopSimilar
+    if len(topSimilar) == 0 && len(dynamicResponse.Details) > 0 {
+        // Details는 다양성 선택 결과일 수 있어 유사도 상위 5개는 별도 정렬 필요
+        detailsCopy := make([]model.CombinationDetail, len(dynamicResponse.Details))
+        copy(detailsCopy, dynamicResponse.Details)
+        sort.Slice(detailsCopy, func(i, j int) bool { return detailsCopy[i].Similarity > detailsCopy[j].Similarity })
+        if len(detailsCopy) > 5 {
+            detailsCopy = detailsCopy[:5]
+        }
+        topSimilar = detailsCopy
+    }
 	
 	s.logger.Info("동적 조합 생성 성공",
 		zap.Strings("combinations", finalTitles),
@@ -108,9 +121,10 @@ func (s *TitleService) GenerateTitles(ctx context.Context, resumeID uuid.UUID) (
 		zap.Int("processing_time_ms", processingTime),
 		zap.Strings("titles", finalTitles))
 
-	return &model.GenerateTitlesResponse{
-		Titles: finalTitles,
-	}, nil
+    return &model.GenerateTitlesResponse{
+        Titles:     finalTitles,
+        TopSimilar: topSimilar,
+    }, nil
 }
 
 // diversityRanking 다양성 기반 재순위화
@@ -327,18 +341,30 @@ func (s *TitleService) generateTitlesLegacy(ctx context.Context, resumeID uuid.U
 		return nil, fmt.Errorf("벡터 검색 실패: %w", err)
 	}
 
-	var finalTitles []string
-	if len(searchResults) == 0 {
+    var finalTitles []string
+    // 상위 유사 5개 (레거시 경로의 경우 검색 결과 상위에서 취함)
+    var topSimilar []model.CombinationDetail
+    if len(searchResults) == 0 {
 		s.logger.Warn("벡터 DB에서 결과 없음, 기본 췽호 사용")
 		finalTitles = s.GetRandomTitles(ctx)
 	} else {
 		// 다양성 기반 재순위화 후 상위 3개 선택
 		finalTitles = s.diversityRanking(searchResults, 3)
+        // 상위 유사 5개 구성
+        limit := 5
+        if len(searchResults) < limit { limit = len(searchResults) }
+        for i := 0; i < limit; i++ {
+            topSimilar = append(topSimilar, model.CombinationDetail{
+                Phrase:     searchResults[i].Phrase,
+                Similarity: float64(searchResults[i].Score),
+            })
+        }
 	}
 
-	return &model.GenerateTitlesResponse{
-		Titles: finalTitles,
-	}, nil
+    return &model.GenerateTitlesResponse{
+        Titles:     finalTitles,
+        TopSimilar: topSimilar,
+    }, nil
 }
 
 // saveDynamicTitleRecommendation 동적 조합 생성 결과 저장

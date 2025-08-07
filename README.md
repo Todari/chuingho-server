@@ -84,6 +84,73 @@ Batch Processing: 최적화된 배치 임베딩 (32개 단위)
 Output: 정규화된 768차원 밀집 벡터
 ```
 
+### 🧪 AI 심화 설명 (연구자/박사과정용)
+
+이 절은 서비스의 AI 구성요소를 연구자 관점에서 엄밀하게 기술합니다.
+
+- 문제정의: 입력 자기소개서 텍스트 x에서 개인화된 표현적 칭호 y = [a, n] (형용사 a, 명사 n) 조합을 생성. y는 의미적 적합도 f(q, y)를 최대화하며, 결과 집합 Y는 상호 다양성을 갖도록 제한.
+
+- 임베딩과 정규화: 한국어 문장 임베딩 모델 g(·)로 q = g(x) ∈ ℝ^768. 모든 벡터는 ℓ2 정규화되어 내적이 코사인 유사도와 동치.
+  - sim(q, v) = ⟨q, v⟩ = (q · v) / (∥q∥∥v∥), 여기서 ∥q∥ = ∥v∥ = 1.
+
+- 동적 후보 생성: 대규모 단어풀 A (형용사), N (명사)에서 의미적 사전 필터링 후 카르테시안 곱으로 후보 Y′ 생성.
+  - 단계 1: r_a = TopK_a(sim(q, g(a))) for a ∈ A.
+  - 단계 2: r_n = TopK_n(sim(q, g(n))) for n ∈ N.
+  - 단계 3: Y′ = {(a, n) | a ∈ r_a, n ∈ r_n}, |Y′| = K_a × K_n (기본 20×30=600).
+  - 단계 4: 각 y ∈ Y′에 대해 v_y = g(text(y)) 임베딩을 배치(32)로 계산.
+  - 단계 5: 적합도 f(q, y) = sim(q, v_y).
+
+- 다양성 재순위화(MMR):
+  - 선택 집합 S를 점증적으로 구성하며 다음을 반복 선택:
+    - y* = argmax_{y∈Y′\S} [ λ·sim(q, y) − (1−λ)·max_{s∈S} div(y, s) ]
+  - 본 구현은 div를 문자열 단위 Jaccard 유사도로 근사(단어 중복 억제). 확장안: div를 임베딩 거리(1−cos)로 대체하여 의미적 중복 감소.
+  - λ=0.7 기본.
+
+- 한국어 처리 고려사항:
+  - 조사/어미/합성어로 인해 WordPiece 토크나이저 분절이 과도해질 수 있음 → 입력 정규화(공백/특수문자 정리), 문장 경계 유지.
+  - 형용사/명사 제약: 실제 수식형(…한/…적인 등) 및 순수 명사 사용을 선호하여 비문 생성 방지. 운영 전략: 룰 기반 전처리 + 빈도 기반 화이트리스트 + 품사 태깅(옵션) 결합.
+
+- 복잡도/성능:
+  - 1-pass 필터링: O(|A|+|N|) 임베딩(배치), 600 조합 배치 임베딩(32 단위) → 단일 요청 수십 ms~수백 ms.
+  - 캐싱 전략: (a,n) 임베딩 캐시, 어휘 수준 임베딩 캐시, q 유사 질의 캐시(ANN) 가능.
+  - 확장성: |A|,|N| 증대 시 TopK 전단계에 ANN(FAISS) 적용으로 사전 필터 비용 상수화.
+
+- 오프라인 평가지표:
+  - 적합성(Mean Reciprocal Rank vs. 인간 평가), 다양성(Intra-list Diversity: 평균 1−cos 또는 Jaccard), 언어적 유창성(문법성/수용성 인지평가), 공정성(특정 속성 편향 검사).
+
+- 안전/편향:
+  - 민감 속성을 직접 포함하는 토큰을 후보에서 제외(룰 기반 차단 목록). 샘플링 노이즈 하한 설정으로 극단적 조합 억제.
+
+- 대안/확장:
+  - 생성형 언어모델(LLM)과 결합: y를 생성 후 임베딩 스코어로 재랭킹(contrastive rerank).
+  - 프레이즈 그래프 탐색: a↔n 공연결(co-occurrence) 그래프에서 Personalized PageRank로 후보 추출 후 임베딩 재랭킹.
+
+### ⚙️ 실행 요약 (로컬 테스트 서버)
+
+```bash
+go build -buildvcs=false -o bin/test-server-v2 ./cmd/test-server
+./bin/test-server-v2 &
+
+# 건강 확인
+curl -s http://localhost:8080/health | jq .
+
+# 텍스트 업로드 → resumeId 획득
+RES=$(curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"text":"안녕하세요. 저는 풀스택 개발자입니다..."}' \
+  http://localhost:8080/v1/resumes); echo "$RES"
+RID=$(echo "$RES" | jq -r .resumeId)
+
+# 동적 조합 기반 칭호 생성
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"resumeId":"'"$RID"'"}' \
+  http://localhost:8080/v1/titles | jq .
+
+# (선택) ML 모의 엔드포인트 직접 호출
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"resume_text":"텍스트", "top_k":5}' \
+  http://localhost:8080/generate_dynamic_combinations | jq .
+```
+
 **구현 세부사항:**
 - **모델 로딩**: `sentence-transformers` 라이브러리 사용
 - **GPU 지원**: CUDA 환경에서 자동 감지 및 활용
@@ -472,8 +539,15 @@ curl -X POST -H "Content-Type: application/json" \
 {
   "titles": [
     "혁신적인 개발자",
-    "자동화 전문가", 
+    "자동화 전문가",
     "학습하는 엔지니어"
+  ],
+  "top_similar": [
+    {"phrase": "혁신적인 개발자", "similarity": 0.93},
+    {"phrase": "자동화 전문가", "similarity": 0.90},
+    {"phrase": "학습하는 엔지니어", "similarity": 0.88},
+    {"phrase": "체계적인 개발자", "similarity": 0.86},
+    {"phrase": "효율적인 엔지니어", "similarity": 0.84}
   ]
 }
 
@@ -520,8 +594,15 @@ Content-Type: application/json
 {
   "titles": [
     "창의적 설계자",
-    "세심한 분석가", 
+    "세심한 분석가",
     "적극적 리더"
+  ],
+  "top_similar": [
+    {"phrase": "창의적 설계자", "similarity": 0.94},
+    {"phrase": "세심한 분석가", "similarity": 0.91},
+    {"phrase": "적극적 리더", "similarity": 0.89},
+    {"phrase": "체계적 설계자", "similarity": 0.87},
+    {"phrase": "분석적 개발자", "similarity": 0.85}
   ]
 }
 ```

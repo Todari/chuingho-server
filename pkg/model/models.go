@@ -90,7 +90,8 @@ type GenerateTitlesRequest struct {
 
 // GenerateTitlesResponse 췽호 생성 응답
 type GenerateTitlesResponse struct {
-	Titles []string `json:"titles"`
+    Titles     []string               `json:"titles"`
+    TopSimilar []CombinationDetail    `json:"top_similar,omitempty"`
 }
 
 // MLEmbeddingRequest ML 서비스 임베딩 요청
@@ -142,6 +143,7 @@ type DynamicCombinationResponse struct {
 	TotalGenerated      int                 `json:"total_generated"`
 	FilteredAdjectives  int                 `json:"filtered_adjectives"`
 	FilteredNouns       int                 `json:"filtered_nouns"`
+    TopSimilar          []CombinationDetail `json:"top_similar,omitempty"`
 }
 
 // ErrorResponse API 에러 응답

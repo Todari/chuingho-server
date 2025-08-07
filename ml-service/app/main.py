@@ -235,7 +235,10 @@ async def generate_dynamic_combinations(request: dict):
         
         # 7단계: 유사도 기준 정렬 및 다양성 고려 선택
         similarities.sort(key=lambda x: x["similarity"], reverse=True)
-        
+
+        # 상위 유사 조합 5개 (MMR 적용 전)
+        top_similar = similarities[:5]
+
         # MMR 알고리즘으로 다양성 고려
         final_results = select_diverse_combinations(similarities, top_k)
         
@@ -246,6 +249,7 @@ async def generate_dynamic_combinations(request: dict):
         return {
             "combinations": [result["phrase"] for result in final_results],
             "details": final_results,
+            "top_similar": top_similar,
             "processing_time": processing_time,
             "total_generated": len(combinations),
             "filtered_adjectives": len(relevant_adjectives),
