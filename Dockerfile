@@ -1,10 +1,11 @@
+# syntax=docker/dockerfile:1.7
 # Go 애플리케이션 Dockerfile
 
 # 빌드 스테이지
 FROM golang:1.23-alpine AS builder
 
 # 빌드 도구 설치
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git ca-certificates tzdata build-base
 
 # 작업 디렉토리 설정
 WORKDIR /build
@@ -21,25 +22,40 @@ COPY migrations/ ./migrations/
 COPY data/ ./data/
 COPY docker-entrypoint.sh ./
 COPY config.yaml ./
+COPY phrases_corpus.txt ./
+COPY sample_resume.txt ./
 
 # 멀티아키텍처 빌드를 위한 타겟 변수 수신 (buildx가 주입)
 ARG TARGETOS
 ARG TARGETARCH
 
-# 바이너리 빌드
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+# 바이너리 빌드 (디렉터리 진입 후 빌드하여 경로 문제 방지)
+WORKDIR /build/cmd/server
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
-    -o server ./cmd/server
+    -o /build/server .
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+WORKDIR /build/cmd/migration
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
-    -o migration ./cmd/migration
+    -o /build/migration .
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+WORKDIR /build/cmd/prepare_phrases
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
-    -o prepare_phrases ./cmd/prepare_phrases
+    -o /build/prepare_phrases .
+
+# 다시 루트로 복귀
+WORKDIR /build
 
 # 런타임 스테이지
+# 런타임 스테이지는 distroless로도 가능하지만, 여기서는 Alpine 유지
 FROM alpine:latest
 
 # 시스템 패키지 업데이트 및 CA 인증서 설치
@@ -58,7 +74,7 @@ COPY --from=builder /build/migration /app/
 COPY --from=builder /build/prepare_phrases /app/
 
 # 설정 파일 복사 (선택적)
-COPY --from=builder /build/config.yaml /app/config.yaml* 
+COPY --from=builder /build/config.yaml /app/config.yaml
 COPY --from=builder /build/phrases_corpus.txt /app/
 COPY --from=builder /build/sample_resume.txt /app/
 

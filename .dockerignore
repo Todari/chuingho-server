@@ -1,0 +1,45 @@
+# Git
+.git
+
+# OS/IDE
+.DS_Store
+.vscode
+.idea
+
+# Node
+node_modules
+
+# Python caches/venvs
+__pycache__
+*.pyc
+ml-service/venv
+ml-service/.venv
+**/site-packages/**
+**/.pytest_cache/**
+**/.mypy_cache/**
+
+# Test/coverage artifacts
+bin
+coverage
+.coverage
+*.out
+*.log
+
+# Large or unused data for image build
+phrases_corpus_extended.txt
+poetic_phrases_corpus.txt
+
+# Keep essential build inputs (do NOT exclude these):
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!pkg/
+!migrations/
+!data/
+!docker-entrypoint.sh
+!config.yaml
+!phrases_corpus.txt
+!sample_resume.txt
+!Dockerfile
+!.dockerignore
