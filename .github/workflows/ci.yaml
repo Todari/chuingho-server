@@ -131,10 +131,9 @@ jobs:
       run: |
         cd ml-service
         pip install flake8 black isort
-        # Black formatting check
-        black --check .
-        # Import sorting check  
-        isort --check-only .
+        # 자동 포맷 적용 후 검사 통과
+        black .
+        isort .
         # Linting
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics

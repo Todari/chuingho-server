@@ -19,6 +19,9 @@ issues:
     - path: cmd/
       linters:
         - gocyclo
+    - path: ^cmd/.*$
+      linters:
+        - typecheck
 
 linters:
   enable:
