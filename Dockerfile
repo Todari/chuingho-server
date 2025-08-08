@@ -28,30 +28,25 @@ COPY config.yaml ./
 ARG TARGETOS
 ARG TARGETARCH
 
-# 바이너리 빌드 (디렉터리 진입 후 빌드하여 경로 문제 방지)
-WORKDIR /build/cmd/server
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -o /build/server .
-
-WORKDIR /build/cmd/migration
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -o /build/migration .
-
-WORKDIR /build/cmd/prepare_phrases
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
-    -ldflags='-w -s -extldflags "-static"' \
-    -o /build/prepare_phrases .
-
-# 다시 루트로 복귀
+# 바이너리 빌드 (모듈 루트에서 각 서브패키지 지정 빌드)
 WORKDIR /build
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -o /build/server ./cmd/server
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -o /build/migration ./cmd/migration
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
+    -ldflags='-w -s -extldflags "-static"' \
+    -o /build/prepare_phrases ./cmd/prepare_phrases
 
 # 런타임 스테이지
 # 런타임 스테이지는 distroless로도 가능하지만, 여기서는 Alpine 유지

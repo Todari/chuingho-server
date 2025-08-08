@@ -93,6 +93,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up QEMU (multi-arch emulation)
+      uses: docker/setup-qemu-action@v3
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -115,6 +118,7 @@ jobs:
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
           type=sha,prefix=main-,suffix=-{{date 'YYYYMMDD'}},format=short
+          type=raw,value=${{ needs.version.outputs.version }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -187,11 +191,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Deploy to production
+    - name: Prepare Kubernetes manifests
       run: |
         echo "Deploying version ${{ needs.version.outputs.version }} to production"
         
-        # Kubernetes 방식 배포 (프로덕션 환경)
+        # Kubernetes 배포 매니페스트 생성
         cat > k8s-deployment.yml << EOF
         apiVersion: apps/v1
         kind: Deployment
@@ -257,10 +261,33 @@ jobs:
                     memory: "4Gi"
                     cpu: "2000m"
         EOF
-        
-        # 배포 실행 (실제로는 kubectl apply 사용)
-        # kubectl apply -f k8s-deployment.yml
-        echo "Production deployment configuration ready"
+
+    - name: Install kubectl
+      run: |
+        set -e
+        curl -sSL -o kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -sSL https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/kubectl
+
+    - name: Configure kubeconfig
+      env:
+        KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+      run: |
+        set -e
+        if [ -z "$KUBE_CONFIG" ]; then
+          echo "KUBE_CONFIG secret is missing. Please add base64-encoded kubeconfig to secrets." >&2
+          exit 1
+        fi
+        mkdir -p $HOME/.kube
+        echo "$KUBE_CONFIG" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Apply manifests
+      run: |
+        set -e
+        kubectl -n production apply -f k8s-deployment.yml
+        kubectl -n production rollout status deploy/chuingho-api --timeout=300s
+        kubectl -n production rollout status deploy/chuingho-ml --timeout=600s
         
     - name: Run production smoke tests
       run: |
