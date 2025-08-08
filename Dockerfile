@@ -22,8 +22,7 @@ COPY migrations/ ./migrations/
 COPY data/ ./data/
 COPY docker-entrypoint.sh ./
 COPY config.yaml ./
-COPY phrases_corpus.txt ./
-COPY sample_resume.txt ./
+## 선택 샘플/데이터 파일은 빌드에 필수 아님 (리포에 없을 수 있으므로 복사하지 않음)
 
 # 멀티아키텍처 빌드를 위한 타겟 변수 수신 (buildx가 주입)
 ARG TARGETOS
@@ -75,8 +74,6 @@ COPY --from=builder /build/prepare_phrases /app/
 
 # 설정 파일 복사 (선택적)
 COPY --from=builder /build/config.yaml /app/config.yaml
-COPY --from=builder /build/phrases_corpus.txt /app/
-COPY --from=builder /build/sample_resume.txt /app/
 
 # 마이그레이션 디렉토리 복사
 COPY --from=builder /build/migrations /app/migrations
@@ -96,9 +93,10 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# 엔트리포인트 스크립트
-COPY --from=builder /build/docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
+# 엔트리포인트 스크립트 (권한/소유자 지정하여 복사)
+USER root
+COPY --from=builder --chown=appuser:appuser --chmod=0755 /build/docker-entrypoint.sh /app/docker-entrypoint.sh
+USER appuser
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["server"]

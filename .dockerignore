@@ -39,7 +39,6 @@ poetic_phrases_corpus.txt
 !data/
 !docker-entrypoint.sh
 !config.yaml
-!phrases_corpus.txt
-!sample_resume.txt
+## 선택 파일은 강제 포함하지 않음 (리포에 없을 수 있음)
 !Dockerfile
 !.dockerignore
