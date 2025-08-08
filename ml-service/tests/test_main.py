@@ -1,10 +1,11 @@
 """FastAPI 메인 애플리케이션 테스트"""
 
+from unittest.mock import Mock, patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import Mock, patch
 from app.main import app
-from app.models import EmbeddingRequest, BatchEmbeddingRequest
+from app.models import BatchEmbeddingRequest, EmbeddingRequest
 
 
 @pytest.fixture

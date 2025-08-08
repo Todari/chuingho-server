@@ -173,7 +173,7 @@ class EmbeddingService:
         
         # 연속된 공백 정리
         import re
-        processed = re.sub(r'\s+', ' ', processed)
+        processed = re.sub(r"\s+", " ", processed)
         
         # 너무 긴 텍스트 자르기 (BERT 토큰 한계 고려)
         max_length = 512  # 토큰 기준이 아닌 문자 기준 근사치

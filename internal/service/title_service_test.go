@@ -20,22 +20,22 @@ type MockMLClient struct {
 }
 
 func (m *MockMLClient) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
-	args := m.Called(ctx, text)
+    args := m.Mock.Called(ctx, text)
 	return args.Get(0).([]float32), args.Error(1)
 }
 
 func (m *MockMLClient) GetBatchEmbeddings(ctx context.Context, phrases []string) (map[string][]float32, error) {
-	args := m.Called(ctx, phrases)
+    args := m.Mock.Called(ctx, phrases)
 	return args.Get(0).(map[string][]float32), args.Error(1)
 }
 
 func (m *MockMLClient) GenerateDynamicCombinations(ctx context.Context, resumeText string, topK int) (*model.DynamicCombinationResponse, error) {
-	args := m.Called(ctx, resumeText, topK)
+    args := m.Mock.Called(ctx, resumeText, topK)
 	return args.Get(0).(*model.DynamicCombinationResponse), args.Error(1)
 }
 
 func (m *MockMLClient) HealthCheck(ctx context.Context) error {
-	args := m.Called(ctx)
+    args := m.Mock.Called(ctx)
 	return args.Error(0)
 }
 
@@ -45,17 +45,17 @@ type MockResumeService struct {
 }
 
 func (m *MockResumeService) UploadResume(ctx context.Context, text string) (*model.UploadResumeResponse, error) {
-	args := m.Called(ctx, text)
+    args := m.Mock.Called(ctx, text)
 	return args.Get(0).(*model.UploadResumeResponse), args.Error(1)
 }
 
 func (m *MockResumeService) GetResumeContent(ctx context.Context, resumeID uuid.UUID) (string, error) {
-	args := m.Called(ctx, resumeID)
+    args := m.Mock.Called(ctx, resumeID)
 	return args.Get(0).(string), args.Error(1)
 }
 
 func (m *MockResumeService) UpdateResumeStatus(ctx context.Context, resumeID uuid.UUID, status model.ResumeStatus) error {
-	args := m.Called(ctx, resumeID, status)
+    args := m.Mock.Called(ctx, resumeID, status)
 	return args.Error(0)
 }
 

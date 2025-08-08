@@ -48,6 +48,7 @@ jobs:
       id: version
       run: |
         if [[ $GITHUB_REF == refs/tags/v* ]]; then
+      
           VERSION=${GITHUB_REF#refs/tags/}
           IS_RELEASE=true
         else

@@ -1,7 +1,7 @@
 """FastAPI ML 임베딩 서비스 메인 애플리케이션"""
 
-import os
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import List
@@ -10,12 +10,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .models import (
-    EmbeddingRequest, EmbeddingResponse,
-    BatchEmbeddingRequest, BatchEmbeddingResponse, PhraseEmbedding,
-    HealthResponse, ErrorResponse
-)
 from .embedding_service import EmbeddingService
+from .models import (
+    BatchEmbeddingRequest,
+    BatchEmbeddingResponse,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    ErrorResponse,
+    HealthResponse,
+    PhraseEmbedding,
+)
 
 # 로깅 설정
 logging.basicConfig(
@@ -55,7 +59,7 @@ app = FastAPI(
     title="췽호 ML 임베딩 서비스",
     description="한국어 자기소개서 텍스트를 벡터로 변환하는 ML 서비스",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS 설정
@@ -195,7 +199,9 @@ async def generate_dynamic_combinations(request: dict):
         adj_filter_count = request.get("adj_filter_count", 20)
         noun_filter_count = request.get("noun_filter_count", 30)
         
-        logger.info(f"동적 조합 생성 요청: resume_length={len(resume_text)}, top_k={top_k}")
+        logger.info(
+            f"동적 조합 생성 요청: resume_length={len(resume_text)}, top_k={top_k}"
+        )
         start_time = time.time()
         
         # 1단계: 자기소개서 임베딩 생성
@@ -228,10 +234,9 @@ async def generate_dynamic_combinations(request: dict):
         similarities = []
         for i, combination_vector in enumerate(combination_vectors):
             similarity = cosine_similarity(resume_vector, combination_vector)
-            similarities.append({
-                "phrase": combinations[i],
-                "similarity": float(similarity)
-            })
+            similarities.append(
+                {"phrase": combinations[i], "similarity": float(similarity)}
+            )
         
         # 7단계: 유사도 기준 정렬 및 다양성 고려 선택
         similarities.sort(key=lambda x: x["similarity"], reverse=True)
@@ -253,7 +258,7 @@ async def generate_dynamic_combinations(request: dict):
             "processing_time": processing_time,
             "total_generated": len(combinations),
             "filtered_adjectives": len(relevant_adjectives),
-            "filtered_nouns": len(relevant_nouns)
+            "filtered_nouns": len(relevant_nouns),
         }
         
     except Exception as e:
