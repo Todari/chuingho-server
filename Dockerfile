@@ -13,8 +13,14 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 
-# 소스 코드 복사
-COPY . .
+# 소스 코드 최소 복사 (불필요한 대용량 제외)
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY pkg/ ./pkg/
+COPY migrations/ ./migrations/
+COPY data/ ./data/
+COPY docker-entrypoint.sh ./
+COPY config.yaml ./
 
 # 멀티아키텍처 빌드를 위한 타겟 변수 수신 (buildx가 주입)
 ARG TARGETOS
