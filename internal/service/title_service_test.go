@@ -190,11 +190,11 @@ func TestTitleService_GenerateTitles_EmptyDynamicResponse_Fallback(t *testing.T)
 		FilteredAdjectives:  0,
 		FilteredNouns:       0,
 	}
-	mockMLClient.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return(emptyResponse, nil)
+    mockMLClient.Mock.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return(emptyResponse, nil)
 	
 	// 폴백 - 기존 방식
 	mockEmbedding := []float32{0.1, 0.2, 0.3}
-	mockMLClient.On("GetEmbedding", mock.Anything, resumeText).Return(mockEmbedding, nil)
+    mockMLClient.Mock.On("GetEmbedding", mock.Anything, resumeText).Return(mockEmbedding, nil)
 	
 	mockSearchResults := []model.VectorSearchResult{
 		{Phrase: "기본 개발자", Score: 0.80},
@@ -337,28 +337,28 @@ func (m *MockVectorDB) Delete(ctx context.Context, ids []string) error {
 }
 
 func (m *MockVectorDB) Update(ctx context.Context, id string, vector []float32, metadata map[string]interface{}) error {
-	args := m.Called(ctx, id, vector, metadata)
-	return args.Error(0)
+    args := m.Mock.Called(ctx, id, vector, metadata)
+    return args.Error(0)
 }
 
 func (m *MockVectorDB) HealthCheck(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
+    args := m.Mock.Called(ctx)
+    return args.Error(0)
 }
 
 func (m *MockVectorDB) GetStats(ctx context.Context) (*vector.VectorStats, error) {
-    args := m.Called(ctx)
+    args := m.Mock.Called(ctx)
     return args.Get(0).(*vector.VectorStats), args.Error(1)
 }
 
 func (m *MockVectorDB) Initialize(ctx context.Context) error {
-    args := m.Called(ctx)
+    args := m.Mock.Called(ctx)
     return args.Error(0)
 }
 
 func (m *MockVectorDB) Close() error {
-	args := m.Called()
-	return args.Error(0)
+    args := m.Mock.Called()
+    return args.Error(0)
 }
 
 // 성능 테스트

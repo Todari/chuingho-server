@@ -1,9 +1,14 @@
 run:
   timeout: 5m
   tests: true
-  modules-download-mode: readonly
+  modules-download-mode: mod
+  build-flags:
+    - -buildvcs=false
 
 issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
   exclude-rules:
     - path: _test\.go
       linters:
@@ -66,6 +71,7 @@ linters-settings:
     checks: ["all"]
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
