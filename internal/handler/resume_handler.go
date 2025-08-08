@@ -14,8 +14,8 @@ import (
 
 // ResumeHandler 자기소개서 관련 HTTP 핸들러
 type ResumeHandler struct {
-	resumeService *service.ResumeService
-	logger        *zap.Logger
+    resumeService *service.ResumeService
+    logger        *zap.Logger
 }
 
 // NewResumeHandler 새로운 자기소개서 핸들러 생성

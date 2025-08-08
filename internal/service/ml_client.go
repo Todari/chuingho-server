@@ -22,6 +22,14 @@ type MLClient struct {
 	logger     *zap.Logger
 }
 
+// MLClientAPI ML 클라이언트 인터페이스 (테스트/모킹 용이성)
+type MLClientAPI interface {
+    GetEmbedding(ctx context.Context, text string) ([]float32, error)
+    GetBatchEmbeddings(ctx context.Context, phrases []string) (map[string][]float32, error)
+    GenerateDynamicCombinations(ctx context.Context, resumeText string, topK int) (*model.DynamicCombinationResponse, error)
+    HealthCheck(ctx context.Context) error
+}
+
 // NewMLClient 새로운 ML 클라이언트 생성
 func NewMLClient(cfg config.MLConfig, logger *zap.Logger) *MLClient {
 	return &MLClient{

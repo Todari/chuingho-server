@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap/zaptest"
 
+	"github.com/Todari/chuingho-server/internal/vector"
 	"github.com/Todari/chuingho-server/pkg/model"
 )
 
@@ -64,11 +65,11 @@ func TestTitleService_GenerateTitles_DynamicCombination_Success(t *testing.T) {
 	mockMLClient := &MockMLClient{}
 	mockResumeService := &MockResumeService{}
 
-	titleService := &TitleService{
-		mlClient:      mockMLClient,
-		resumeService: mockResumeService,
-		logger:        logger,
-	}
+    titleService := &TitleService{
+        mlClient:      mockMLClient, // MLClientAPI를 만족
+        resumeService: mockResumeService,
+        logger:        logger,
+    }
 
 	resumeID := uuid.New()
 	resumeText := "안녕하세요. 저는 풀스택 개발자로서 React와 Node.js를 활용한 웹 애플리케이션 개발에 전문성을 가지고 있습니다. 새로운 기술을 학습하는 것을 좋아하며, 클라우드 환경에서의 DevOps와 자동화에 관심이 많습니다."
@@ -319,9 +320,10 @@ type MockVectorDB struct {
 	mock.Mock
 }
 
-func (m *MockVectorDB) Add(ctx context.Context, id string, vector []float32, metadata map[string]interface{}) error {
-	args := m.Called(ctx, id, vector, metadata)
-	return args.Error(0)
+// VectorDB 인터페이스 호환을 위해 AddVectors 구현
+func (m *MockVectorDB) AddVectors(ctx context.Context, vectors []vector.VectorRecord) error {
+    args := m.Called(ctx, vectors)
+    return args.Error(0)
 }
 
 func (m *MockVectorDB) Search(ctx context.Context, query []float32, topK int) ([]model.VectorSearchResult, error) {
@@ -329,9 +331,9 @@ func (m *MockVectorDB) Search(ctx context.Context, query []float32, topK int) ([
 	return args.Get(0).([]model.VectorSearchResult), args.Error(1)
 }
 
-func (m *MockVectorDB) Delete(ctx context.Context, id string) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
+func (m *MockVectorDB) Delete(ctx context.Context, ids []string) error {
+    args := m.Called(ctx, ids)
+    return args.Error(0)
 }
 
 func (m *MockVectorDB) Update(ctx context.Context, id string, vector []float32, metadata map[string]interface{}) error {
@@ -344,9 +346,14 @@ func (m *MockVectorDB) HealthCheck(ctx context.Context) error {
 	return args.Error(0)
 }
 
-func (m *MockVectorDB) GetStats(ctx context.Context) (map[string]interface{}, error) {
-	args := m.Called(ctx)
-	return args.Get(0).(map[string]interface{}), args.Error(1)
+func (m *MockVectorDB) GetStats(ctx context.Context) (*vector.VectorStats, error) {
+    args := m.Called(ctx)
+    return args.Get(0).(*vector.VectorStats), args.Error(1)
+}
+
+func (m *MockVectorDB) Initialize(ctx context.Context) error {
+    args := m.Called(ctx)
+    return args.Error(0)
 }
 
 func (m *MockVectorDB) Close() error {

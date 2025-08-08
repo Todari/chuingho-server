@@ -19,7 +19,7 @@ type HealthHandler struct {
 	db        *database.DB
 	storage   *storage.Storage
 	vectorDB  vector.VectorDB
-	mlClient  *service.MLClient
+    mlClient  service.MLClientAPI
 	logger    *zap.Logger
 }
 
@@ -28,7 +28,7 @@ func NewHealthHandler(
 	db *database.DB,
 	storage *storage.Storage,
 	vectorDB vector.VectorDB,
-	mlClient *service.MLClient,
+    mlClient service.MLClientAPI,
 	logger *zap.Logger,
 ) *HealthHandler {
 	return &HealthHandler{
