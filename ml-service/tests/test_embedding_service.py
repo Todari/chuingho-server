@@ -1,8 +1,9 @@
 """임베딩 서비스 테스트"""
 
-import pytest
-import numpy as np
 from unittest.mock import Mock, patch
+
+import numpy as np
+import pytest
 from app.embedding_service import EmbeddingService
 
 

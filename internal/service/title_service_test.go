@@ -75,8 +75,8 @@ func TestTitleService_GenerateTitles_DynamicCombination_Success(t *testing.T) {
 	resumeText := "안녕하세요. 저는 풀스택 개발자로서 React와 Node.js를 활용한 웹 애플리케이션 개발에 전문성을 가지고 있습니다. 새로운 기술을 학습하는 것을 좋아하며, 클라우드 환경에서의 DevOps와 자동화에 관심이 많습니다."
 
 	// Mock 설정
-	mockResumeService.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
-	mockResumeService.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
+    mockResumeService.Mock.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
+    mockResumeService.Mock.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
 	
 	expectedResponse := &model.DynamicCombinationResponse{
 		Combinations: []string{
@@ -95,8 +95,8 @@ func TestTitleService_GenerateTitles_DynamicCombination_Success(t *testing.T) {
 		FilteredNouns:       30,
 	}
 	
-	mockMLClient.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return(expectedResponse, nil)
-	mockResumeService.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusCompleted).Return(nil)
+    mockMLClient.Mock.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return(expectedResponse, nil)
+    mockResumeService.Mock.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusCompleted).Return(nil)
 
 	// When
 	result, err := titleService.GenerateTitles(context.Background(), resumeID)
@@ -110,8 +110,8 @@ func TestTitleService_GenerateTitles_DynamicCombination_Success(t *testing.T) {
 	assert.Equal(t, "학습하는 엔지니어", result.Titles[2])
 
 	// 모든 모킹이 호출되었는지 확인
-	mockMLClient.AssertExpectations(t)
-	mockResumeService.AssertExpectations(t)
+    mockMLClient.Mock.AssertExpectations(t)
+    mockResumeService.Mock.AssertExpectations(t)
 }
 
 func TestTitleService_GenerateTitles_DynamicCombination_Fallback_Success(t *testing.T) {
@@ -132,20 +132,20 @@ func TestTitleService_GenerateTitles_DynamicCombination_Fallback_Success(t *test
 	resumeText := "창의적이고 열정적인 개발자입니다."
 
 	// Mock 설정 - 동적 조합 생성 실패
-	mockResumeService.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
-	mockResumeService.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
-	mockMLClient.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return((*model.DynamicCombinationResponse)(nil), assert.AnError)
+    mockResumeService.Mock.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
+    mockResumeService.Mock.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
+    mockMLClient.Mock.On("GenerateDynamicCombinations", mock.Anything, resumeText, 3).Return((*model.DynamicCombinationResponse)(nil), assert.AnError)
 	
 	// 폴백 - 기존 방식
 	mockEmbedding := []float32{0.1, 0.2, 0.3}
-	mockMLClient.On("GetEmbedding", mock.Anything, resumeText).Return(mockEmbedding, nil)
+    mockMLClient.Mock.On("GetEmbedding", mock.Anything, resumeText).Return(mockEmbedding, nil)
 	
 	mockSearchResults := []model.VectorSearchResult{
 		{Phrase: "창의적 설계자", Score: 0.95},
 		{Phrase: "열정적 개발자", Score: 0.90},
 		{Phrase: "협력적 리더", Score: 0.85},
 	}
-	mockVectorDB.On("Search", mock.Anything, mockEmbedding, 50).Return(mockSearchResults, nil)
+    mockVectorDB.Mock.On("Search", mock.Anything, mockEmbedding, 50).Return(mockSearchResults, nil)
 
 	// When
 	result, err := titleService.GenerateTitles(context.Background(), resumeID)
@@ -156,9 +156,9 @@ func TestTitleService_GenerateTitles_DynamicCombination_Fallback_Success(t *test
 	assert.Len(t, result.Titles, 3)
 
 	// 모든 모킹이 호출되었는지 확인
-	mockMLClient.AssertExpectations(t)
-	mockResumeService.AssertExpectations(t)
-	mockVectorDB.AssertExpectations(t)
+    mockMLClient.Mock.AssertExpectations(t)
+    mockResumeService.Mock.AssertExpectations(t)
+    mockVectorDB.Mock.AssertExpectations(t)
 }
 
 func TestTitleService_GenerateTitles_EmptyDynamicResponse_Fallback(t *testing.T) {
@@ -179,8 +179,8 @@ func TestTitleService_GenerateTitles_EmptyDynamicResponse_Fallback(t *testing.T)
 	resumeText := "개발자입니다."
 
 	// Mock 설정 - 동적 조합 생성 성공하지만 결과 없음
-	mockResumeService.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
-	mockResumeService.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
+    mockResumeService.Mock.On("UpdateResumeStatus", mock.Anything, resumeID, model.ResumeStatusProcessing).Return(nil)
+    mockResumeService.Mock.On("GetResumeContent", mock.Anything, resumeID).Return(resumeText, nil)
 	
 	emptyResponse := &model.DynamicCombinationResponse{
 		Combinations:        []string{}, // 빈 결과
@@ -201,7 +201,7 @@ func TestTitleService_GenerateTitles_EmptyDynamicResponse_Fallback(t *testing.T)
 		{Phrase: "일반 프로그래머", Score: 0.75},
 		{Phrase: "평범한 엔지니어", Score: 0.70},
 	}
-	mockVectorDB.On("Search", mock.Anything, mockEmbedding, 50).Return(mockSearchResults, nil)
+    mockVectorDB.Mock.On("Search", mock.Anything, mockEmbedding, 50).Return(mockSearchResults, nil)
 
 	// When
 	result, err := titleService.GenerateTitles(context.Background(), resumeID)
@@ -212,9 +212,9 @@ func TestTitleService_GenerateTitles_EmptyDynamicResponse_Fallback(t *testing.T)
 	assert.Len(t, result.Titles, 3)
 
 	// 모든 모킹이 호출되었는지 확인
-	mockMLClient.AssertExpectations(t)
-	mockResumeService.AssertExpectations(t)
-	mockVectorDB.AssertExpectations(t)
+    mockMLClient.Mock.AssertExpectations(t)
+    mockResumeService.Mock.AssertExpectations(t)
+    mockVectorDB.Mock.AssertExpectations(t)
 }
 
 func TestTitleService_DiversityRanking(t *testing.T) {
@@ -322,17 +322,17 @@ type MockVectorDB struct {
 
 // VectorDB 인터페이스 호환을 위해 AddVectors 구현
 func (m *MockVectorDB) AddVectors(ctx context.Context, vectors []vector.VectorRecord) error {
-    args := m.Called(ctx, vectors)
+    args := m.Mock.Called(ctx, vectors)
     return args.Error(0)
 }
 
 func (m *MockVectorDB) Search(ctx context.Context, query []float32, topK int) ([]model.VectorSearchResult, error) {
-	args := m.Called(ctx, query, topK)
+    args := m.Mock.Called(ctx, query, topK)
 	return args.Get(0).([]model.VectorSearchResult), args.Error(1)
 }
 
 func (m *MockVectorDB) Delete(ctx context.Context, ids []string) error {
-    args := m.Called(ctx, ids)
+    args := m.Mock.Called(ctx, ids)
     return args.Error(0)
 }
 

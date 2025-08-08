@@ -1,6 +1,7 @@
 """ML 서비스 데이터 모델"""
 
 from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 

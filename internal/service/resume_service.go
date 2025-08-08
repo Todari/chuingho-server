@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -108,12 +109,12 @@ func (s *ResumeService) GetResume(ctx context.Context, resumeID uuid.UUID) (*mod
 		&resume.ID, &resume.UserID, &resume.Content, &resume.ContentHash,
 		&resume.Status, &resume.CreatedAt, &resume.UpdatedAt)
 
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("자기소개서를 찾을 수 없습니다: %s", resumeID.String())
-		}
-		return nil, fmt.Errorf("자기소개서 조회 실패: %w", err)
-	}
+    if err != nil {
+        if errors.Is(err, pgx.ErrNoRows) {
+            return nil, fmt.Errorf("자기소개서를 찾을 수 없습니다: %s", resumeID.String())
+        }
+        return nil, fmt.Errorf("자기소개서 조회 실패: %w", err)
+    }
 
 	return &resume, nil
 }
