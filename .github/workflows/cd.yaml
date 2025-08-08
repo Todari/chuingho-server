@@ -35,7 +35,7 @@ jobs:
       - name: Python fatal lint (syntax/import errors)
         run: |
           if [ -d ml-service ]; then \
-            cd ml-service && flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics; \
+            cd ml-service && flake8 . --exclude "venv,.venv,**/site-packages/**" --count --select=E9,F63,F7,F82 --show-source --statistics; \
           else \
             echo "ml-service directory not found, skipping Python lint"; \
           fi
