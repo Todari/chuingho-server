@@ -1,7 +1,7 @@
 # Go 애플리케이션 Dockerfile
 
 # 빌드 스테이지
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # 빌드 도구 설치
 RUN apk add --no-cache git ca-certificates tzdata
@@ -16,16 +16,20 @@ RUN go mod download
 # 소스 코드 복사
 COPY . .
 
+# 멀티아키텍처 빌드를 위한 타겟 변수 수신 (buildx가 주입)
+ARG TARGETOS
+ARG TARGETARCH
+
 # 바이너리 빌드
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
     -o server ./cmd/server
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
     -o migration ./cmd/migration
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags='-w -s -extldflags "-static"' \
     -o prepare_phrases ./cmd/prepare_phrases
 
